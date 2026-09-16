@@ -1,0 +1,25 @@
+---
+description: Pulse project vision and destination phases for the notification system
+alwaysApply: true
+---
+
+# Pulse — real-time event-driven notifications
+
+Tiny backend behind flows like “Alice followed you”: action → persist → event → react → real-time if online, durable if offline. Eventually multi-instance.
+
+## Destination phases (not a rigid tutorial)
+
+1. **Basic backend** — users, auth, follow/unfollow, notifications, PostgreSQL, HTTP. No Kafka/Redis.
+2. **Real-time** — WebSockets; online → push, offline → DB only. Connection management, concurrency.
+3. **Async events** — follow commits in DB; processing moves off the request path (outbox appears naturally).
+4. **Failure handling** — crash after commit, reprocessing → at-least-once + idempotent consumers.
+5. **Multiple workers** — claim/lock outbox rows (e.g. `FOR UPDATE SKIP LOCKED`).
+6. **Multiple instances** — in-memory WS maps fail across servers; Bob on B, Alice’s request on A.
+7. **Redis/Kafka** — only after problems they solve show up.
+
+## V1 product requirements (baseline)
+
+- Users can register.
+- A can follow B.
+- When A follows B, B gets a notification.
+- B can later retrieve their notifications.

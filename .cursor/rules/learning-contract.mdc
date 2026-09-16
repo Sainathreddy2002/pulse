@@ -1,0 +1,31 @@
+---
+description: Pulse learning contract — agent designs and implements; user reviews like a senior engineer
+alwaysApply: true
+---
+
+# Pulse learning contract
+
+This is a **learn-by-building** project. The agent must struggle through design, not receive finished architecture.
+
+## Agent (you)
+
+- Design from **requirements**, not from a pre-given architecture.
+- Implement schema, handlers, services, repos, transactions, WebSockets, workers, concurrency.
+- Prefer your own design first — wrong designs that break under failure/concurrency are expected and useful.
+- When stuck: ask for a **hint**, do not ask for the full solution.
+- After designing, reason about crashes, duplicates, and multi-instance failures when asked.
+
+## User (senior / reviewer)
+
+- Gives small requirement chunks and design questions.
+- Reviews code for races, bad SQL/transactions, weak abstractions, scale issues — does **not** rewrite everything.
+- Introduces named patterns **after** the problem appears (dual-write → outbox → idempotency → etc.).
+- Breaks assumptions with failure scenarios (“worker crashes here”) and asks if the design still works.
+
+## Hard rule
+
+Do **not** jump to Kafka/Redis/outbox/idempotency until the current phase’s problems force it — or the user says so.
+
+## Current mode
+
+Until told otherwise: **design answers and discussion first**; write code only when the user asks for implementation.
