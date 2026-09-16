@@ -1,25 +1,30 @@
 package service
 
 import (
+	"database/sql"
 	"errors"
 	"pulse/repository"
+
+	"github.com/google/uuid"
 
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
 var (
-	ErrCantFollowYourself       = errors.New("can't follow yourself")
-	ErrUserOrFollowerNotFound   = errors.New("user or follower doesn't exist")
-	ErrAlreadyFollowing         = errors.New("already following")
+	ErrCantFollowYourself     = errors.New("can't follow yourself")
+	ErrUserOrFollowerNotFound = errors.New("user or follower doesn't exist")
+	ErrAlreadyFollowing       = errors.New("already following")
 )
 
 type FollowService struct {
-	follows *repository.FollowRepository
-	users   *repository.UserRepository
+	follows       *repository.FollowRepository
+	users         *repository.UserRepository
+	notifications *repository.NotificationRepository
+	db            *sql.DB
 }
 
-func NewFollowService(follows *repository.FollowRepository, users *repository.UserRepository) *FollowService {
-	return &FollowService{follows: follows, users: users}
+func NewFollowService(follows *repository.FollowRepository, users *repository.UserRepository, notifications *repository.NotificationRepository, db *sql.DB) *FollowService {
+	return &FollowService{follows: follows, users: users, notifications: notifications, db: db}
 }
 
 func (s *FollowService) FollowUser(followingID, followerID int64) error {
@@ -38,16 +43,27 @@ func (s *FollowService) FollowUser(followingID, followerID int64) error {
 	if !exists || !followerExists {
 		return ErrUserOrFollowerNotFound
 	}
-
-	err = s.follows.FollowUser(followingID, followerID)
+	tx, txErr := s.db.Begin()
+	if txErr != nil {
+		return txErr
+	}
+	err = s.follows.FollowUser(followingID, followerID, tx)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			tx.Rollback()
 			return ErrAlreadyFollowing
 		}
+		tx.Rollback()
 		return err
 	}
-	return nil
+	notifyErr := s.notifications.AddFollowNotification(tx, uuid.New().String(), followerID, followingID, "follow")
+	if notifyErr != nil {
+		tx.Rollback()
+		return notifyErr
+	}
+	return tx.Commit()
+
 }
 
 func (s *FollowService) UnfollowUser(followingID, followerID int64) error {

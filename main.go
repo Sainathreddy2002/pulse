@@ -34,11 +34,13 @@ func main() {
 		log.Fatal(err)
 	}
 
+	notificationRepo := repository.NewNotificationRepository(db)
+
 	userRepo := repository.NewUserRepository(db)
 	followRepo := repository.NewFollowRepository(db)
 
 	userService := service.NewUserService(userRepo)
-	followService := service.NewFollowService(followRepo, userRepo)
+	followService := service.NewFollowService(followRepo, userRepo, notificationRepo, db)
 
 	userHandler := handler.NewUserHandler(userService)
 	followHandler := handler.NewFollowHandler(followService)

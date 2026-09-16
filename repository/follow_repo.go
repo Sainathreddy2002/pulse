@@ -10,8 +10,8 @@ func NewFollowRepository(db *sql.DB) *FollowRepository {
 	return &FollowRepository{db: db}
 }
 
-func (r *FollowRepository) FollowUser(followingID, followerID int64) error {
-	_, err := r.db.Exec(
+func (r *FollowRepository) FollowUser(followingID, followerID int64, q DBTX) error {
+	_, err := q.Exec(
 		`INSERT INTO follows (follower_id, following_id) VALUES ($1, $2)`,
 		followerID, followingID,
 	)
