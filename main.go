@@ -35,15 +35,17 @@ func main() {
 	}
 
 	notificationRepo := repository.NewNotificationRepository(db)
-
 	userRepo := repository.NewUserRepository(db)
 	followRepo := repository.NewFollowRepository(db)
+	outboxRepo := repository.NewOutboxRepository(db)
 
 	userService := service.NewUserService(userRepo)
-	followService := service.NewFollowService(followRepo, userRepo, notificationRepo, db)
+	followService := service.NewFollowService(followRepo, userRepo, notificationRepo, outboxRepo, db)
+	notificationService := service.NewNotificationService(notificationRepo)
 
 	userHandler := handler.NewUserHandler(userService)
 	followHandler := handler.NewFollowHandler(followService)
+	notificationHandler := handler.NewNotificationHandler(notificationService)
 
 	r := gin.Default()
 
@@ -56,6 +58,7 @@ func main() {
 	auth := r.Group("/")
 	auth.Use(handler.AuthMiddleware)
 	auth.GET("/me", userHandler.Me)
+	auth.GET("/notifications", notificationHandler.GetNotifications)
 	auth.POST("/users/:id/follow", followHandler.FollowUser)
 	auth.DELETE("/users/:id/follow", followHandler.UnfollowUser)
 
@@ -63,6 +66,7 @@ func main() {
 	if addr == "" {
 		addr = ":8080"
 	}
+	go Run(outboxRepo)
 	if err := r.Run(addr); err != nil {
 		log.Fatal(err)
 	}

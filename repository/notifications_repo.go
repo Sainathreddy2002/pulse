@@ -1,6 +1,9 @@
 package repository
 
-import "database/sql"
+import (
+	"database/sql"
+	"time"
+)
 
 type NotificationRepository struct {
 	db *sql.DB
@@ -19,3 +22,39 @@ func (repo *NotificationRepository) AddFollowNotification(q DBTX, id string, cau
 // 	_, err := q.Exec(`DELETE FROM notifications WHERE type=$1 AND caused_by=$2 AND received_by=$3)`, desc, caused_by, received_by)
 // 	return err
 // }
+
+type SingleNotification struct {
+	ID         string    `json:"id"`
+	Type       string    `json:"type"`
+	CausedBy   int64     `json:"causedBy"`
+	ReceivedBy int64     `json:"receivedBy"`
+	CreatedAt  time.Time `json:"createdAt"`
+	IsRead     bool      `json:"isRead"`
+}
+
+func (repo *NotificationRepository) GetUserNotifications(userID int64) ([]SingleNotification, error) {
+	rows, err := repo.db.Query(
+		`SELECT id, type, caused_by, received_by, created_at, is_read
+		 FROM notifications
+		 WHERE received_by = $1
+		 ORDER BY created_at DESC`,
+		userID,
+	)
+	if err != nil {
+		return []SingleNotification{}, err
+	}
+	defer rows.Close()
+
+	res := []SingleNotification{}
+	for rows.Next() {
+		var ele SingleNotification
+		if scanErr := rows.Scan(&ele.ID, &ele.Type, &ele.CausedBy, &ele.ReceivedBy, &ele.CreatedAt, &ele.IsRead); scanErr != nil {
+			return []SingleNotification{}, scanErr
+		}
+		res = append(res, ele)
+	}
+	if err := rows.Err(); err != nil {
+		return []SingleNotification{}, err
+	}
+	return res, nil
+}

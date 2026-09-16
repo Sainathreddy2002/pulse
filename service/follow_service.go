@@ -20,11 +20,12 @@ type FollowService struct {
 	follows       *repository.FollowRepository
 	users         *repository.UserRepository
 	notifications *repository.NotificationRepository
+	outbox        *repository.OutboxRepository
 	db            *sql.DB
 }
 
-func NewFollowService(follows *repository.FollowRepository, users *repository.UserRepository, notifications *repository.NotificationRepository, db *sql.DB) *FollowService {
-	return &FollowService{follows: follows, users: users, notifications: notifications, db: db}
+func NewFollowService(follows *repository.FollowRepository, users *repository.UserRepository, notifications *repository.NotificationRepository, outbox *repository.OutboxRepository, db *sql.DB) *FollowService {
+	return &FollowService{follows: follows, users: users, notifications: notifications, outbox: outbox, db: db}
 }
 
 func (s *FollowService) FollowUser(followingID, followerID int64) error {
@@ -61,6 +62,11 @@ func (s *FollowService) FollowUser(followingID, followerID int64) error {
 	if notifyErr != nil {
 		tx.Rollback()
 		return notifyErr
+	}
+	outboxErr := s.outbox.AddProcess(tx, "follow", followerID, followingID)
+	if outboxErr != nil {
+		tx.Rollback()
+		return outboxErr
 	}
 	return tx.Commit()
 
