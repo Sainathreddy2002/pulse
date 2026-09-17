@@ -8,6 +8,7 @@ import (
 	"pulse/handler"
 	"pulse/repository"
 	"pulse/service"
+	"pulse/ws"
 
 	"github.com/gin-gonic/gin"
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -39,6 +40,9 @@ func main() {
 	followRepo := repository.NewFollowRepository(db)
 	outboxRepo := repository.NewOutboxRepository(db)
 
+	hub := ws.NewWSConnection()
+	wsHandler := ws.NewHandler(hub)
+
 	userService := service.NewUserService(userRepo)
 	followService := service.NewFollowService(followRepo, userRepo, notificationRepo, outboxRepo, db)
 	notificationService := service.NewNotificationService(notificationRepo)
@@ -61,12 +65,13 @@ func main() {
 	auth.GET("/notifications", notificationHandler.GetNotifications)
 	auth.POST("/users/:id/follow", followHandler.FollowUser)
 	auth.DELETE("/users/:id/follow", followHandler.UnfollowUser)
+	auth.GET("/ws", wsHandler.WSHandler)
 
 	addr := os.Getenv("PORT")
 	if addr == "" {
 		addr = ":8080"
 	}
-	go Run(outboxRepo)
+	go Run(outboxRepo, hub, userRepo)
 	if err := r.Run(addr); err != nil {
 		log.Fatal(err)
 	}
