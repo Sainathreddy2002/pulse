@@ -58,16 +58,13 @@ func (h *Handler) WSHandler(c *gin.Context) {
 	// 	return
 	// }
 	client := NewClient(conn, userID)
-
 	h.hub.Register(client)
+	defer h.hub.Unregister(client)
 
 	for {
-		_, _, err := conn.ReadMessage()
-		if err != nil {
-			h.hub.Unregister(client)
-			log.Println("Some error:", err)
+		if _, _, err := conn.ReadMessage(); err != nil {
+			log.Println("ws disconnect:", err)
 			return
 		}
-
 	}
 }
