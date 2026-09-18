@@ -32,15 +32,15 @@ func (repo *OutboxRepository) GetProcesses(limit int) ([]SingleProcess, error) {
 	if txErr != nil {
 		return []SingleProcess{}, txErr
 	}
-	rows, err := tx.Query(`UPDATE outbox SET status='processing'
+	rows, err := tx.Query(`UPDATE outbox SET status = 'processing', processing_at = NOW()
 WHERE id IN (
   SELECT id FROM outbox
-  WHERE processed_at IS NULL and status='pending'
+  WHERE processed_at IS NULL AND status = 'pending'
   ORDER BY id
   LIMIT $1
   FOR UPDATE SKIP LOCKED
 )
-RETURNING id,type,caused_by,received_by,created_at,status`, limit)
+RETURNING id, type, caused_by, received_by, created_at, status`, limit)
 	if err != nil {
 		tx.Rollback()
 		return []SingleProcess{}, err
@@ -67,6 +67,39 @@ RETURNING id,type,caused_by,received_by,created_at,status`, limit)
 }
 
 func (repo *OutboxRepository) MarkProcessed(id int64) error {
-	_, err := repo.db.Exec(`update outbox set processed_at=NOW(),status='done' where id=$1`, id)
+	_, err := repo.db.Exec(`
+		UPDATE outbox
+		SET processed_at = NOW(), status = 'done', processing_at = NULL
+		WHERE id = $1`, id)
 	return err
+}
+
+// RecordEmailFailure increments attempts. Retries as pending until maxAttempts, then failed.
+func (repo *OutboxRepository) RecordEmailFailure(id int64, maxAttempts int) error {
+	_, err := repo.db.Exec(`
+		UPDATE outbox
+		SET attempts = attempts + 1,
+		    processing_at = NULL,
+		    status = CASE
+		        WHEN attempts + 1 >= $2 THEN 'failed'
+		        ELSE 'pending'
+		    END
+		WHERE id = $1`, id, maxAttempts)
+	return err
+}
+
+// RequeueStuckProcessing moves long-running processing rows back to pending.
+func (repo *OutboxRepository) RequeueStuckProcessing(olderThan time.Duration) (int64, error) {
+	res, err := repo.db.Exec(`
+		UPDATE outbox
+		SET status = 'pending', processing_at = NULL
+		WHERE status = 'processing'
+		  AND processing_at IS NOT NULL
+		  AND processing_at < NOW() - ($1 * INTERVAL '1 second')`,
+		int64(olderThan.Seconds()),
+	)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
 }

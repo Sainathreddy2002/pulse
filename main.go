@@ -114,7 +114,8 @@ func main() {
 		}
 	}()
 
-	go Run(outboxRepo, hub, userRepo, mailer, rdb)
+	go Run(outboxRepo, userRepo, mailer, rdb)
+	go RunSweeper(outboxRepo)
 	if err := r.Run(addr); err != nil {
 		log.Fatal(err)
 	}

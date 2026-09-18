@@ -6,13 +6,14 @@ import (
 	"log"
 	"pulse/email"
 	"pulse/repository"
-	"pulse/ws"
 	"time"
 
 	"github.com/redis/go-redis/v9"
 )
 
-func Run(repo *repository.OutboxRepository, hub *ws.Hub, userRepo *repository.UserRepository, mailer *email.Sender, rdb *redis.Client) {
+const maxEmailAttempts = 5
+
+func Run(repo *repository.OutboxRepository, userRepo *repository.UserRepository, mailer *email.Sender, rdb *redis.Client) {
 	ctx := context.Background()
 	for {
 		processes, err := repo.GetProcesses(10)
@@ -25,12 +26,18 @@ func Run(repo *repository.OutboxRepository, hub *ws.Hub, userRepo *repository.Us
 			follower, followerErr := userRepo.Me(p.CausedBy)
 			if followerErr != nil {
 				log.Println(followerErr)
+				if err := repo.RecordEmailFailure(p.ID, maxEmailAttempts); err != nil {
+					log.Println(err)
+				}
 				continue
 			}
 
 			recipient, recipientErr := userRepo.Me(p.ReceivedBy)
 			if recipientErr != nil {
 				log.Println(recipientErr)
+				if err := repo.RecordEmailFailure(p.ID, maxEmailAttempts); err != nil {
+					log.Println(err)
+				}
 				continue
 			}
 
@@ -47,6 +54,9 @@ func Run(repo *repository.OutboxRepository, hub *ws.Hub, userRepo *repository.Us
 			body := msg + "\n\n— Pulse"
 			if err := mailer.Send(recipient.Email, subject, body); err != nil {
 				log.Println("email send failed:", err)
+				if err := repo.RecordEmailFailure(p.ID, maxEmailAttempts); err != nil {
+					log.Println(err)
+				}
 				continue
 			}
 
