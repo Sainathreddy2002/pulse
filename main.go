@@ -1,19 +1,29 @@
 package main
 
 import (
+	"context"
 	"database/sql"
+	"encoding/json"
 	"log"
 	"net/http"
 	"os"
+	"pulse/email"
 	"pulse/handler"
 	"pulse/repository"
 	"pulse/service"
 	"pulse/ws"
 
 	"github.com/gin-gonic/gin"
+	"github.com/gorilla/websocket"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/joho/godotenv"
+	"github.com/redis/go-redis/v9"
 )
+
+type NotifyMsg struct {
+	UserID int64  `json:"userId"`
+	Body   string `json:"body"`
+}
 
 func main() {
 	if err := godotenv.Load(".env.dev"); err != nil {
@@ -21,6 +31,14 @@ func main() {
 	}
 
 	dsn := os.Getenv("DATABASE_URL")
+	rdb := redis.NewClient(&redis.Options{
+		Addr: os.Getenv("REDIS_ADDR"),
+	})
+
+	if err := rdb.Ping(context.Background()).Err(); err != nil {
+		log.Fatal(err)
+	}
+
 	if dsn == "" {
 		dsn = "postgres://postgres:postgres@localhost:5434/pulse?sslmode=disable"
 	}
@@ -42,6 +60,11 @@ func main() {
 
 	hub := ws.NewWSConnection()
 	wsHandler := ws.NewHandler(hub)
+
+	mailer, err := email.NewSenderFromEnv()
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	userService := service.NewUserService(userRepo)
 	followService := service.NewFollowService(followRepo, userRepo, notificationRepo, outboxRepo, db)
@@ -71,8 +94,29 @@ func main() {
 	if addr == "" {
 		addr = ":8080"
 	}
-	go Run(outboxRepo, hub, userRepo)
+
+	//Redis
+	const channel = "pulse:notify"
+
+	go func() {
+		ctx := context.Background()
+		sub := rdb.Subscribe(ctx, channel)
+		ch := sub.Channel()
+		for msg := range ch {
+			var actualMsg NotifyMsg
+			err := json.Unmarshal([]byte(msg.Payload), &actualMsg)
+			if err != nil {
+				log.Print(err)
+				continue
+			}
+			hub.Send(actualMsg.UserID, websocket.TextMessage, []byte(actualMsg.Body))
+
+		}
+	}()
+
+	go Run(outboxRepo, hub, userRepo, mailer, rdb)
 	if err := r.Run(addr); err != nil {
 		log.Fatal(err)
 	}
+
 }
